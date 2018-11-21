@@ -10,6 +10,9 @@
 . /lib/functions.sh
 
 . /etc/sqm/sqm.conf
+# the following are needed for the sqm_* family of verbosity functions
+. ${SQM_LIB_DIR}/defaults.sh
+. ${SQM_LIB_DIR}/functions.sh
 
 ACTION="${1:-start}"
 RUN_IFACE="$2"
