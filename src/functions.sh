@@ -15,7 +15,7 @@
 # it under the terms of the GNU General Public License version 2 as
 # published by the Free Software Foundation.
 #
-#   Copyright (C) 2012-2018
+#   Copyright (C) 2012-2019
 #       Michael D. Taht, Toke Høiland-Jørgensen, Sebastian Moeller
 #       Eric Luehrsen
 #
@@ -47,6 +47,36 @@ sqm_warn() { sqm_logger $VERBOSITY_WARNING WARNING: "$@"; }
 sqm_log() { sqm_logger $VERBOSITY_INFO "$@"; }
 sqm_debug() { sqm_logger $VERBOSITY_DEBUG "$@"; }
 sqm_trace() { sqm_logger $VERBOSITY_TRACE "$@"; }
+
+
+# Inspired from https://stackoverflow.com/questions/85880/determine-if-a-function-exists-in-bash
+#fn_exists() { LC_ALL=C type $1 | grep -q 'is a function'; }
+fn_exists() { 
+    local FN_CANDIDATE=$1
+    local CUR_LC_ALL
+    local TYPE_OUTPUT
+    local RET
+    # check that a candidate nme was given    
+    if [ -z "${FN_CANDIDATE}" ]; then
+	sqm_error "fn_exists: no function name specified as first argument."
+	return 1
+    fi
+    sqm_debug "fn_exists: function candidate name: ${FN_CANDIDATE}"
+
+    # extract the textual type description
+    TYPE_OUTPUT=$( LC_ALL=C type $1 )
+    sqm_debug "fn_exists: TYPE_OUTPUT: $TYPE_OUTPUT"
+
+    # OpenWrt (2019) returns 'is a function'
+    # Debian Buster/raspbian returns 'is a shell function'
+    # let's just hope no Linux system reurn 'is a shell builtin function'
+    echo ${TYPE_OUTPUT} | grep -q 'function'
+    RET=$?
+
+    sqm_debug "fn_exists: return value: ${RET}"
+    return ${RET}
+}
+
 
 # ipt needs a toggle to show the outputs for debugging (as do all users of >
 # /dev/null 2>&1 and friends)
@@ -318,6 +348,56 @@ get_cake_lla_string() {
         sqm_debug "cake link layer adjustments: ${STABSTRING}"
     fi
     echo ${STABSTRING}
+}
+
+
+# centralize the implementation for the default sqm_start sqeuence
+# the individual sqm_start function only need to do the individually
+# necessary checking.
+# This expects the calling script to supply both an egress() and ingress() function
+# and will warn if they are missing
+sqm_start_default() {
+    #sqm_error "sqm_start_default"
+    [ -n "$IFACE" ] || return 1
+    
+    fn_exists sqm_prepare_script
+    if [ "$?" -eq "0" ]; then
+        sqm_prepare_script
+    else
+	sqm_debug "sqm_start_default: no sqm_prepare_script function found, proceeding without."
+    fi
+    
+    
+    do_modules
+    verify_qdisc $QDISC || return 1
+    sqm_debug "sqm_start_default: Starting ${SCRIPT}"
+
+    [ -z "$DEV" ] && DEV=$( get_ifb_for_if ${IFACE} )
+
+    if [ "${UPLINK}" -ne 0 ];
+    then
+	CUR_DIRECTION="egress"
+	fn_exists egress && egress || sqm_warn "sqm_start_default: ${SCRIPT} lacks an egress() function"
+        #egress
+        sqm_debug "sqm_start_default: egress shaping activated"
+    else
+        sqm_debug "sqm_start_default: egress shaping deactivated"
+        SILENT=1 $TC qdisc del dev ${IFACE} root
+    fi
+    if [ "${DOWNLINK}" -ne 0 ];
+    then
+	CUR_DIRECTION="ingress"
+	verify_qdisc ingress "ingress" || return 1
+	fn_exists ingress && ingress || sqm_warn "sqm_start_default: ${SCRIPT} lacks an ingress() function"
+        #ingress
+        sqm_debug "sqm_start_default: ingress shaping activated"
+    else
+        sqm_debug "sqm_start_default: ingress shaping deactivated"
+        SILENT=1 $TC qdisc del dev ${DEV} root
+        SILENT=1 $TC qdisc del dev ${IFACE} ingress
+    fi
+
+    return 0
 }
 
 
