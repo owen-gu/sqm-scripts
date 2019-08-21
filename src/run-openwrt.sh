@@ -10,14 +10,18 @@
 . /lib/functions.sh
 
 . /etc/sqm/sqm.conf
+. ${SQM_LIB_DIR}/functions.sh
 
 ACTION="${1:-start}"
 RUN_IFACE="$2"
+LOCKDIR="${SQM_STATE_DIR}/sqm-run.lock"
 
+check_state_dir
 [ -d "${SQM_QDISC_STATE_DIR}" ] || ${SQM_LIB_DIR}/update-available-qdiscs
 
 stop_statefile() {
-    local f="$1"
+    local f
+    f="$1"
     # Source the state file prior to stopping; we need the variables saved in
     # there.
     [ -f "$f" ] && ( . "$f";
@@ -29,7 +33,8 @@ stop_statefile() {
 }
 
 start_sqm_section() {
-    local section="$1"
+    local section
+    section="$1"
     export IFACE=$(config_get "$section" interface)
 
     [ -z "$RUN_IFACE" -o "$RUN_IFACE" = "$IFACE" ] || return
@@ -71,6 +76,44 @@ start_sqm_section() {
 
     "${SQM_LIB_DIR}/start-sqm"
 }
+
+release_lock() {
+    PID=$(cat "$LOCKDIR/pid")
+    if [ "$PID" -ne "$$" ]; then
+        sqm_error "Trying to release lock with wrong PID $PID != $$"
+        return 1
+    fi
+
+    rm -rf "$LOCKDIR"
+    return 0
+}
+
+take_lock() {
+
+    if mkdir "$LOCKDIR" 2>/dev/null; then
+        sqm_trace "Acquired run lock"
+        echo $$ > "$LOCKDIR/pid"
+
+        trap release_lock 0
+        return 0
+    fi
+    PID=$(cat "$LOCKDIR/pid")
+    sqm_warning "Unable to get run lock - already held by $PID"
+    return 1
+}
+
+MAX_TRIES=10
+tries=$MAX_TRIES
+while ! take_lock; do
+    sleep 1
+    tries=$((tries - 1))
+    if [ "$tries" -eq 0 ]; then
+        sqm_error "Giving up on getting lock after $MAX_TRIES attempts"
+        sqm_error "This is a bug; please report it at https://github.com/tohojo/sqm-scripts/issues"
+        sqm_error "Then, to re-enable sqm-scripts, manually remove $LOCKDIR"
+        exit 1
+    fi
+done
 
 if [ "$ACTION" = "stop" ]; then
     if [ -z "$RUN_IFACE" ]; then
