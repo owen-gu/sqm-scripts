@@ -81,13 +81,13 @@ fn_exists() {
     sqm_debug "fn_exists: function candidate name: ${FN_CANDIDATE}"
 
     # extract the textual type description
-    TYPE_OUTPUT=$( LC_ALL=C type $1 )
+    TYPE_OUTPUT=$( LC_ALL=C type $1 2>&1 )
     sqm_debug "fn_exists: TYPE_OUTPUT: $TYPE_OUTPUT"
 
     # OpenWrt (2019) returns 'is a function'
     # Debian Buster/raspbian returns 'is a shell function'
     # let's just hope no Linux system reurn 'is a shell builtin function'
-    echo ${TYPE_OUTPUT} | grep -q 'function'
+    echo ${TYPE_OUTPUT} | grep -q 'is .*function'
     RET=$?
 
     sqm_debug "fn_exists: return value: ${RET}"
