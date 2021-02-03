@@ -6,13 +6,57 @@ This repository contains the sqm-scripts traffic shaper from the CeroWrt
 project. See:
 http://www.bufferbloat.net/projects/cerowrt/wiki/Smart_Queue_Management
 
+## How does sqm-scripts set up traffic shaping?
+
+sqm-scripts uses the Linux qdisc mechanism to configure traffic shaping and
+scheduling. Either by a combination of the HTB qdisc (for shaping) and fq_codel
+(for packet scheduling), or using the CAKE integrated scheduler to do both at
+once.
+
+Because qdiscs only see traffic as it is *leaving* an interface, for ingress
+shaping sqm-scripts sets up an IFB device. Incoming packets are redirected to
+this device where a regular qdisc can handle them. The IFB device is named for
+the egress interface it is paired with, so the IFB for 'eth0' will be called
+'ifb4eth0'.
+
+This is all illustrated on the following diagram:
+
+![qdisc diagram](qdisc-diagram.png)
+Diagram contributed by Matt Taggart (@taggart). Source in [qdisc-diagram.dia](qdisc-diagram.dia).
+
+## Requirements
+
+To run sqm-scripts you just need a Linux machine with a kernel from the last
+decade or so (any of the longterm releases on kernel.org should work - please
+don't run a kernel that is not a currently released version, longterm or
+current). The only exception is that if you want to use the `cake` qdisc, you
+either need kernel 4.19 or newer (with matching `iproute2` version), or you need
+to build CAKE yourself from the out-of-tree repository at
+https://github.com/dtaht/sch_cake.
+
 ## Installing
 `sudo make install` should install things on a regular Linux box. For
-OpenWrt, there are packages available in the ceropackages repository:
-https://github.com/dtaht/ceropackages-3.10 and in openwrt nightly
-builds as well as in the main packages repository (https://github.com/openwrt/packages/tree/master/net/sqm-scripts).
+OpenWrt, there are packages available in the distribution, so just install the
+sqm-scripts package, and optionally luci-app-sqm for GUI support.
 
-## "Installing" the current development version from git
+## Running on regular Linux distributions
+After installing using `make install`, do the following to enable sqm-scripts:
+
+1. Copy `/etc/sqm/default.conf` to `/etc/sqm/<dev>.iface.conf` where `<dev>` is
+   the name of the interface you wish to run sqm-scripts on. Then adjust the
+   values in the file to your environment, setting at least UPLINK, DOWNLINK,
+   and possibly SCRIPT.
+
+2. If you're on a Debian-derived distribution that uses old-style network config
+   in `/etc/network/`, the Makefile should detect this and drop in appropriate
+   hotplug scripts, so sqm-script should automatically run on the next 'ifup'.
+
+3. If you're on a systemd-enabled distro, just enable the `sqm@<dev>` service
+   corresponding to your interface name. E.g., for `eth0`, issue `systemctl
+   enable sqm@eth0` (and run `systemctl start sqm@eth0` to start sqm-scripts
+   immediately).
+
+## "Installing" the current development version from git on OpenWrt
 
 Run the steps below on your own computer (not on the router) to retrieve the newest script version from this repository, create the scripts, then copy those new scripts to your router.
 

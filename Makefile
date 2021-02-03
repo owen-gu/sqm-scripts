@@ -2,7 +2,6 @@ PREFIX:=/usr
 DESTDIR:=
 PLATFORM:=linux
 PKG_CONFIG:=$(shell which pkg-config 2>/dev/null)
-LUCI_DIR:=$(DESTDIR)$(PREFIX)/lib/lua/luci
 UNIT_DIR:=$(if $(PKG_CONFIG),\
 	$(DESTDIR)$(shell $(PKG_CONFIG) --variable systemdsystemunitdir systemd),\
 	$(DESTDIR)$(PREFIX)/lib/systemd/system)
@@ -10,19 +9,19 @@ UNIT_DIR:=$(if $(PKG_CONFIG),\
 all:
 	@echo "Run 'make install' to install."
 
+.PHONY: install
 install: install-$(PLATFORM)
 
-
 .PHONY: install-openwrt
-
 install-openwrt: install-lib
 	install -m 0755 -d $(DESTDIR)/etc/hotplug.d/iface $(DESTDIR)/etc/config \
 		$(DESTDIR)/etc/init.d
-	install -m 0755 platform/openwrt/sqm-hotplug $(DESTDIR)/etc/hotplug.d/iface/11-sqm
+	install -m 0600 platform/openwrt/sqm-hotplug $(DESTDIR)/etc/hotplug.d/iface/11-sqm
 	install -m 0755 platform/openwrt/sqm-init $(DESTDIR)/etc/init.d/sqm
 	install -m 0644 platform/openwrt/sqm-uci $(DESTDIR)/etc/config/sqm
 	install -m 0744 src/run-openwrt.sh $(DESTDIR)$(PREFIX)/lib/sqm/run.sh
 
+.PHONY: install-linux
 install-linux: install-lib
 	install -m 0755 -d $(UNIT_DIR) $(DESTDIR)$(PREFIX)/lib/tmpfiles.d \
 		$(DESTDIR)$(PREFIX)/bin
@@ -35,7 +34,6 @@ install-linux: install-lib
 		$(DESTDIR)/etc/network/if-up.d/sqm || exit 0
 
 .PHONY: install-lib
-
 install-lib:
 	install -m 0755 -d $(DESTDIR)/etc/sqm $(DESTDIR)$(PREFIX)/lib/sqm
 	install -m 0644 -C -b platform/$(PLATFORM)/sqm.conf $(DESTDIR)/etc/sqm/sqm.conf
@@ -44,10 +42,24 @@ install-lib:
 	install -m 0744  src/start-sqm src/stop-sqm src/update-available-qdiscs \
 		$(DESTDIR)$(PREFIX)/lib/sqm
 
-.PHONY: install-luci
-install-luci:
-	install -m 0755 -d $(LUCI_DIR)/controller $(LUCI_DIR)/model/cbi
-	install -m 0644 luci/sqm-controller.lua $(LUCI_DIR)/controller/sqm.lua
-	install -m 0644 luci/sqm-cbi.lua $(LUCI_DIR)/model/cbi/sqm.lua
-	install -m 0755 -d $(DESTDIR)/etc/uci-defaults
-	install -m 0755 luci/uci-defaults-sqm $(DESTDIR)/etc/uci-defaults/luci-sqm
+.PHONY: uninstall
+uninstall: uninstall-$(PLATFORM)
+
+.PHONY: uninstall-openwrt
+uninstall-openwrt: uninstall-lib
+	@for f in $(DESTDIR)/etc/hotplug.d/iface/11-sqm $(DESTDIR)/etc/init.d/sqm; do \
+		if [ -f "$$f" ]; then rm -vf "$$f"; fi; done
+	@echo "Not removing config in $(DESTDIR)/etc/sqm and  $(DESTDIR)/etc/config/sqm - remove manually if needed"
+
+.PHONY: uninstall-linux
+uninstall-linux: uninstall-lib
+	@for f in $(UNIT_DIR)/sqm@.service $(DESTDIR)$(PREFIX)/lib/tmpfiles.d/sqm.conf \
+		$(DESTDIR)$(PREFIX)/bin/sqm $(DESTDIR)/etc/network/if-up.d/sqm; do \
+		if [ -f "$$f" ]; then rm -vf "$$f"; fi; done
+	@echo "Not removing config in $(DESTDIR)/etc/sqm - remove manually if needed"
+
+.PHONY: uninstall-lib
+uninstall-lib:
+	@for f in $(DESTDIR)$(PREFIX)/lib/sqm/*; do \
+		if [ -f "$$f" ]; then rm -vf "$$f"; fi; done
+	@rmdir -v $(DESTDIR)$(PREFIX)/lib/sqm

@@ -234,24 +234,13 @@ do_modules() {
 # Write a state file to the filename given as $1. This version will extract all
 # variable names defined in defaults.sh and since defaults.sh should contain all
 # used variables this should be the complete set.
-write_defaults_vars_to_state_file() {
-    local filename
-    local defaultsFQN
-    local ALL_SQM_DEFAULTS_VARS
-    filename=$1
-    defaultsFQN=$2
-    ALL_SQM_DEFAULTS_VARS=$( grep -r -o -e "[[:alnum:][:punct:]]*=" ${defaultsFQN} | sed 's/=//' )
-
-    write_state_file ${filename} ${ALL_SQM_DEFAULTS_VARS}
-}
-
-# Write a state file to the filename given as $1. The remaining arguments are
-# variable names that should be written to the state file.
 write_state_file() {
     local filename
+    local awkscript
+    awkscript='match($0, /[A-Z0-9_]+=/) {print substr($0, RSTART, RLENGTH-1)}'
     filename=$1
     shift
-    for var in "$@"; do
+    awk "$awkscript" ${SQM_LIB_DIR}/defaults.sh | sort -u | while read var; do
         val=$(eval echo '$'$var)
         echo "$var=\"$val\""
     done > $filename
@@ -384,9 +373,11 @@ verify_qdisc() {
     local args
     local IFB_MTU
     local found
+    local randnum
     qdisc=$1
     supported="$2"
-    ifb=TMP_IFB_4_SQM
+    randnum=$(tr -cd 0-9a-f < /dev/urandom 2>/dev/null | head -c 5)
+    ifb=SQM_IFB_$randnum
     root_string="root" # this works for most qdiscs
     args=""
     IFB_MTU=1514
@@ -529,10 +520,12 @@ sqm_start_default() {
 
 
 sqm_stop() {
-    $TC qdisc del dev $IFACE ingress
-    $TC qdisc del dev $IFACE root
-    [ -n "$CUR_IFB" ] && $TC qdisc del dev $CUR_IFB root
-    [ -n "$CUR_IFB" ] && sqm_debug "${0}: ${CUR_IFB} shaper deleted"
+    if [ "${DOWNLINK}" -ne 0 ]; then
+       $TC qdisc del dev $IFACE ingress
+       $TC qdisc del dev $IFACE root
+       [ -n "$CUR_IFB" ] && $TC qdisc del dev $CUR_IFB root
+       [ -n "$CUR_IFB" ] && sqm_debug "${0}: ${CUR_IFB} shaper deleted"
+    fi
 
     # undo accumulated ipt commands during shutdown
     ipt_log_rewind
